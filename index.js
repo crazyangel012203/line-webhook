@@ -79,12 +79,12 @@ app.post("/webhook", async (req, res) => {
           console.log("GAS response:", gasText);
         }
 
+        // 只保留「完成處理」的回覆
+        // 審閱完成訊息交給 Apps Script 發送
         if (action === "done") {
           await replyText(event.replyToken, `✅ 問題已解決\n第 ${row} 筆已更新`);
-        } else if (role === "boss") {
-          await replyText(event.replyToken, `✅ 老闆審閱完成\n第 ${row} 筆已更新`);
         } else {
-          await replyText(event.replyToken, `✅ 主管審閱完成\n第 ${row} 筆已更新`);
+          return res.status(200).send("OK");
         }
       }
     }
