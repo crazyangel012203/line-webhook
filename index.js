@@ -20,6 +20,7 @@ const SUPERVISORS = [
 // 👉 老闆
 const BOSSES = [
   "Uxxxxxxxxxxxxx"  // 老闆
+  "U1cb929477a940c15a579c794ab40dc32", // 林傳峰
 ];
 
 /**
