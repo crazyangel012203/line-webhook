@@ -8,38 +8,30 @@ const GAS_WEBAPP_URL = (process.env.GAS_WEBAPP_URL || "").trim();
 const LINE_CHANNEL_ACCESS_TOKEN = (process.env.LINE_CHANNEL_ACCESS_TOKEN || "").trim();
 
 /**
- * 權限名單設定
- * 之後你只要改這裡就好
+ * 🔥 用 userId 控權限（之後只改這裡）
  */
+
+// 👉 主管
 const SUPERVISORS = [
-  "林傳峰",
-  "飯小靜"
+  "U1cb929477a940c15a579c794ab40dc32", // 林傳峰
+  "Ud766b544d2af8c0648450562653dde2c"  // 飯小靜
 ];
 
+// 👉 老闆
 const BOSSES = [
-  "林傳峰",
+  "Uxxxxxxxxxxxxx"  // 老闆
 ];
 
 /**
- * 權限判斷
- * role = supervisor / boss
+ * 權限判斷（用 userId）
  */
-function hasPermission(role, displayName) {
-  const name = String(displayName || "").trim();
-
+function hasPermission(role, userId) {
   if (role === "supervisor") {
-    return SUPERVISORS.some(x => name.includes(x));
+    return SUPERVISORS.includes(userId);
   }
 
   if (role === "boss") {
-    return BOSSES.some(x => name.includes(x));
-  }
-
-  return false;
-}
-
-  if (role === "boss") {
-    return BOSSES.includes(displayName);
+    return BOSSES.includes(userId);
   }
 
   return false;
@@ -52,67 +44,52 @@ app.get("/", (req, res) => {
 
 // LINE webhook
 app.post("/webhook", async (req, res) => {
-  // 先立即回 LINE，避免 timeout
+  // 🔥 先回 OK（避免 timeout）
   res.status(200).send("OK");
 
   try {
     const body = req.body;
-    console.log("Webhook body:", JSON.stringify(body));
 
     if (!body.events || !Array.isArray(body.events)) {
       return;
     }
 
     for (const event of body.events) {
-      console.log("Event:", JSON.stringify(event));
 
-      // 一般文字訊息
-      if (event.type === "message" && event.message?.type === "text") {
-        await replyText(event.replyToken, `你剛剛說：${event.message.text}`);
-        continue;
-      }
+      // 👉 抓 userId（重點🔥）
+      const userId = event.source?.userId || "";
+      console.log("👉 userId:", userId);
 
-      // 按鈕 postback
+      // 👉 取得名稱
+      let displayName = "未知";
+      const profile = await getProfile(event);
+      displayName = profile.displayName || "未知";
+
+      console.log("👉 displayName:", displayName);
+
+      // 👉 按鈕處理
       if (event.type === "postback") {
+
         let data = {};
 
         try {
           data = JSON.parse(event.postback.data || "{}");
         } catch (err) {
-          console.error("postback parse error:", err);
           await replyText(event.replyToken, "❌ 按鈕資料錯誤");
           continue;
         }
 
-        console.log("Parsed postback data:", JSON.stringify(data));
-
         const row = Number(data.row || 0);
         const action = String(data.action || "").trim();
         const role = String(data.role || "").trim().toLowerCase();
-
-        console.log("row:", row, "action:", action, "role:", role);
 
         if (!row || !action) {
           await replyText(event.replyToken, "❌ 缺少必要資料");
           continue;
         }
 
-        if (!GAS_WEBAPP_URL) {
-          console.error("GAS_WEBAPP_URL is empty");
-          await replyText(event.replyToken, "❌ GAS_WEBAPP_URL 未設定");
-          continue;
-        }
-
-        // 取得按按鈕的人名
-        let displayName = "未知";
-        const profile = await getProfile(event);
-        displayName = profile.displayName || "未知";
-
-        console.log("displayName:", displayName);
-        console.log("GAS_WEBAPP_URL:", GAS_WEBAPP_URL);
-
-        // 權限判斷
-        const allowed = hasPermission(role, displayName);
+        // 🔥 權限判斷（用 userId）
+        const allowed = hasPermission(role, userId);
 
         if (!allowed) {
           await replyText(event.replyToken, `❌ ${displayName} 沒有此操作權限`);
@@ -137,17 +114,12 @@ app.post("/webhook", async (req, res) => {
             `&name=${encodeURIComponent(displayName)}`;
         }
 
-        console.log("gasUrl:", gasUrl);
+        console.log("👉 gasUrl:", gasUrl);
 
         if (gasUrl) {
           try {
-            const gasResp = await fetch(gasUrl, { method: "GET" });
-            const gasText = await gasResp.text();
-
-            console.log("GAS status:", gasResp.status);
-            console.log("GAS response:", gasText);
-          } catch (fetchErr) {
-            console.error("Fetch GAS error:", fetchErr);
+            await fetch(gasUrl);
+          } catch (err) {
             await replyText(event.replyToken, "❌ 系統連線失敗");
           }
         }
@@ -155,15 +127,14 @@ app.post("/webhook", async (req, res) => {
         continue;
       }
     }
+
   } catch (err) {
     console.error("webhook error:", err);
   }
 });
 
 /**
- * 取得使用者名稱
- * 群組中：用 group member profile
- * 一對一：用 user profile
+ * 🔥 抓名稱（支援群組）
  */
 async function getProfile(event) {
   try {
@@ -187,14 +158,8 @@ async function getProfile(event) {
       }
     });
 
-    const text = await resp.text();
-    console.log("Profile raw response:", text);
+    return await resp.json();
 
-    try {
-      return JSON.parse(text);
-    } catch {
-      return {};
-    }
   } catch (err) {
     console.error("getProfile error:", err);
     return {};
@@ -202,11 +167,11 @@ async function getProfile(event) {
 }
 
 /**
- * 回覆單則文字訊息
+ * 回覆訊息
  */
 async function replyText(replyToken, text) {
   try {
-    const resp = await fetch("https://api.line.me/v2/bot/message/reply", {
+    await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
@@ -223,8 +188,6 @@ async function replyText(replyToken, text) {
       })
     });
 
-    const result = await resp.text();
-    console.log("LINE reply:", result);
   } catch (err) {
     console.error("replyText error:", err);
   }
