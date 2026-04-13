@@ -25,9 +25,18 @@ const BOSSES = [
  * role = supervisor / boss
  */
 function hasPermission(role, displayName) {
+  const name = String(displayName || "").trim();
+
   if (role === "supervisor") {
-    return SUPERVISORS.includes(displayName);
+    return SUPERVISORS.some(x => name.includes(x));
   }
+
+  if (role === "boss") {
+    return BOSSES.some(x => name.includes(x));
+  }
+
+  return false;
+}
 
   if (role === "boss") {
     return BOSSES.includes(displayName);
