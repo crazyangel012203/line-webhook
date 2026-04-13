@@ -7,6 +7,35 @@ const PORT = process.env.PORT || 3000;
 const GAS_WEBAPP_URL = (process.env.GAS_WEBAPP_URL || "").trim();
 const LINE_CHANNEL_ACCESS_TOKEN = (process.env.LINE_CHANNEL_ACCESS_TOKEN || "").trim();
 
+/**
+ * 權限名單設定
+ * 之後你只要改這裡就好
+ */
+const SUPERVISORS = [
+  "林傳峰",
+  "飯小靜"
+];
+
+const BOSSES = [
+  "林傳峰",
+];
+
+/**
+ * 權限判斷
+ * role = supervisor / boss
+ */
+function hasPermission(role, displayName) {
+  if (role === "supervisor") {
+    return SUPERVISORS.includes(displayName);
+  }
+
+  if (role === "boss") {
+    return BOSSES.includes(displayName);
+  }
+
+  return false;
+}
+
 // 健康檢查
 app.get("/", (req, res) => {
   res.status(200).send("LINE webhook server running");
@@ -28,7 +57,7 @@ app.post("/webhook", async (req, res) => {
     for (const event of body.events) {
       console.log("Event:", JSON.stringify(event));
 
-      // 文字訊息
+      // 一般文字訊息
       if (event.type === "message" && event.message?.type === "text") {
         await replyText(event.replyToken, `你剛剛說：${event.message.text}`);
         continue;
@@ -65,16 +94,21 @@ app.post("/webhook", async (req, res) => {
           continue;
         }
 
-        const lineUserId = event.source?.userId || "";
+        // 取得按按鈕的人名
         let displayName = "未知";
-
-        if (lineUserId) {
-          const profile = await getProfile(lineUserId);
-          displayName = profile.displayName || "未知";
-        }
+        const profile = await getProfile(event);
+        displayName = profile.displayName || "未知";
 
         console.log("displayName:", displayName);
         console.log("GAS_WEBAPP_URL:", GAS_WEBAPP_URL);
+
+        // 權限判斷
+        const allowed = hasPermission(role, displayName);
+
+        if (!allowed) {
+          await replyText(event.replyToken, `❌ ${displayName} 沒有此操作權限`);
+          continue;
+        }
 
         let gasUrl = "";
 
@@ -105,8 +139,11 @@ app.post("/webhook", async (req, res) => {
             console.log("GAS response:", gasText);
           } catch (fetchErr) {
             console.error("Fetch GAS error:", fetchErr);
+            await replyText(event.replyToken, "❌ 系統連線失敗");
           }
         }
+
+        continue;
       }
     }
   } catch (err) {
@@ -114,9 +151,27 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-async function getProfile(userId) {
+/**
+ * 取得使用者名稱
+ * 群組中：用 group member profile
+ * 一對一：用 user profile
+ */
+async function getProfile(event) {
   try {
-    const resp = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+    const source = event.source || {};
+    const userId = source.userId || "";
+
+    if (!userId) return {};
+
+    let url = "";
+
+    if (source.type === "group" && source.groupId) {
+      url = `https://api.line.me/v2/bot/group/${source.groupId}/member/${userId}`;
+    } else {
+      url = `https://api.line.me/v2/bot/profile/${userId}`;
+    }
+
+    const resp = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`
@@ -137,6 +192,9 @@ async function getProfile(userId) {
   }
 }
 
+/**
+ * 回覆單則文字訊息
+ */
 async function replyText(replyToken, text) {
   try {
     const resp = await fetch("https://api.line.me/v2/bot/message/reply", {
