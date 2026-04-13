@@ -14,24 +14,30 @@ app.get("/", (req, res) => {
 
 // LINE webhook
 app.post("/webhook", async (req, res) => {
+  // 先立即回 LINE，避免 timeout
+  res.status(200).send("OK");
+
   try {
     const body = req.body;
     console.log("Webhook body:", JSON.stringify(body));
 
     if (!body.events || !Array.isArray(body.events)) {
-      return res.status(200).send("OK");
+      return;
     }
 
     for (const event of body.events) {
       console.log("Event:", JSON.stringify(event));
 
+      // 文字訊息
       if (event.type === "message" && event.message?.type === "text") {
         await replyText(event.replyToken, `你剛剛說：${event.message.text}`);
         continue;
       }
 
+      // 按鈕 postback
       if (event.type === "postback") {
         let data = {};
+
         try {
           data = JSON.parse(event.postback.data || "{}");
         } catch (err) {
@@ -101,15 +107,10 @@ app.post("/webhook", async (req, res) => {
             console.error("Fetch GAS error:", fetchErr);
           }
         }
-
-        return res.status(200).send("OK");
       }
     }
-
-    return res.status(200).send("OK");
   } catch (err) {
     console.error("webhook error:", err);
-    return res.status(200).send("OK");
   }
 });
 
