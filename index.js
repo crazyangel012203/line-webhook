@@ -22,13 +22,11 @@ app.post("/webhook", async (req, res) => {
     }
 
     for (const event of body.events) {
-      // 文字訊息
       if (event.type === "message" && event.message?.type === "text") {
         await replyText(event.replyToken, `你剛剛說：${event.message.text}`);
         continue;
       }
 
-      // 按鈕 postback
       if (event.type === "postback") {
         let data = {};
         try {
@@ -70,6 +68,7 @@ app.post("/webhook", async (req, res) => {
           gasUrl =
             `${GAS_WEBAPP_URL}?row=${row}` +
             `&action=done` +
+            `&role=${encodeURIComponent(role)}` +
             `&name=${encodeURIComponent(displayName)}`;
         }
 
@@ -79,13 +78,7 @@ app.post("/webhook", async (req, res) => {
           console.log("GAS response:", gasText);
         }
 
-        // 只保留「完成處理」的回覆
-        // 審閱完成訊息交給 Apps Script 發送
-        if (action === "done") {
-          await replyText(event.replyToken, `✅ 問題已解決\n第 ${row} 筆已更新`);
-        } else {
-          return res.status(200).send("OK");
-        }
+        return res.status(200).send("OK");
       }
     }
 
