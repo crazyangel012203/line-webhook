@@ -7,45 +7,43 @@ const PORT = process.env.PORT || 3000;
 const GAS_WEBAPP_URL = (process.env.GAS_WEBAPP_URL || "").trim();
 const LINE_CHANNEL_ACCESS_TOKEN = (process.env.LINE_CHANNEL_ACCESS_TOKEN || "").trim();
 
-/**
- * 🔥 用 userId 控權限（之後只改這裡）
- */
-
-// 👉 主管
 const SUPERVISORS = [
   "U1cb929477a940c15a579c794ab40dc32", // 林傳峰
   "Ud766b544d2af8c0648450562653dde2c"  // 飯小靜
 ];
 
-// 👉 老闆
 const BOSSES = [
-  "Uxxxxxxxxxxxxx"  // 老闆
-  "U1cb929477a940c15a579c794ab40dc32", // 林傳峰
+  "U1cb929477a940c15a579c794ab40dc32" // 林傳峰
 ];
 
-/**
- * 權限判斷（用 userId）
- */
+function normalizeRole(role) {
+  const r = String(role || "").trim().toLowerCase();
+
+  if (r === "supervisor") return "supervisor";
+  if (r === "boss") return "boss";
+
+  return "";
+}
+
 function hasPermission(role, userId) {
-  if (role === "supervisor") {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === "supervisor") {
     return SUPERVISORS.includes(userId);
   }
 
-  if (role === "boss") {
+  if (normalizedRole === "boss") {
     return BOSSES.includes(userId);
   }
 
   return false;
 }
 
-// 健康檢查
 app.get("/", (req, res) => {
   res.status(200).send("LINE webhook server running");
 });
 
-// LINE webhook
 app.post("/webhook", async (req, res) => {
-  // 🔥 先回 OK（避免 timeout）
   res.status(200).send("OK");
 
   try {
@@ -56,21 +54,19 @@ app.post("/webhook", async (req, res) => {
     }
 
     for (const event of body.events) {
-
-      // 👉 抓 userId（重點🔥）
       const userId = event.source?.userId || "";
       console.log("👉 userId:", userId);
 
-      // 👉 取得名稱
       let displayName = "未知";
       const profile = await getProfile(event);
       displayName = profile.displayName || "未知";
-
       console.log("👉 displayName:", displayName);
 
-      // 👉 按鈕處理
-      if (event.type === "postback") {
+      if (event.type === "message" && event.message?.type === "text") {
+        continue;
+      }
 
+      if (event.type === "postback") {
         let data = {};
 
         try {
@@ -81,15 +77,18 @@ app.post("/webhook", async (req, res) => {
         }
 
         const row = Number(data.row || 0);
-        const action = String(data.action || "").trim();
-        const role = String(data.role || "").trim().toLowerCase();
+        const action = String(data.action || "").trim().toLowerCase();
+        const role = normalizeRole(data.role);
 
-        if (!row || !action) {
+        console.log("👉 row:", row);
+        console.log("👉 action:", action);
+        console.log("👉 role:", role);
+
+        if (!row || !action || !role) {
           await replyText(event.replyToken, "❌ 缺少必要資料");
           continue;
         }
 
-        // 🔥 權限判斷（用 userId）
         const allowed = hasPermission(role, userId);
 
         if (!allowed) {
@@ -128,15 +127,11 @@ app.post("/webhook", async (req, res) => {
         continue;
       }
     }
-
   } catch (err) {
     console.error("webhook error:", err);
   }
 });
 
-/**
- * 🔥 抓名稱（支援群組）
- */
 async function getProfile(event) {
   try {
     const source = event.source || {};
@@ -160,16 +155,12 @@ async function getProfile(event) {
     });
 
     return await resp.json();
-
   } catch (err) {
     console.error("getProfile error:", err);
     return {};
   }
 }
 
-/**
- * 回覆訊息
- */
 async function replyText(replyToken, text) {
   try {
     await fetch("https://api.line.me/v2/bot/message/reply", {
@@ -180,15 +171,9 @@ async function replyText(replyToken, text) {
       },
       body: JSON.stringify({
         replyToken,
-        messages: [
-          {
-            type: "text",
-            text
-          }
-        ]
+        messages: [{ type: "text", text }]
       })
     });
-
   } catch (err) {
     console.error("replyText error:", err);
   }
